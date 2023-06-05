@@ -1,0 +1,7 @@
+
+aes_impl/aes/.library_mapping.xml
+aes_impl/aes/.project
+aes_impl/aes/.settings/com.sigasi.hdt.verilog.version.prefs
+*.xml
+snow-v_impl/snow-v/.project
+snow-v_impl/snow-v/.settings/com.sigasi.hdt.verilog.version.prefs
