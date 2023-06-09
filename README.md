@@ -33,8 +33,11 @@ This repository contains Verilog implementations, testbenches, and C-code to uti
 Note that the Verilog wrappers and software interface code provided here were written to be used in conjunction with the interface provided during the _Design of Digital Platforms_ course taught at KU Leuven. More information can be found [here](https://www.esat.kuleuven.be/cosic/publications/article-2945.pdf).
 
 ## Results
-The implementations provided in this repository were synthesized and implemented in Vivado v2018.2, using the TUL PYNQ Z2 board as the target device. The throughput and hardware efficiency (FoM) results are given in Figure 1 below.
-![results](https://github.com/RyanDeKoninck/256-bit_crypto_5G/assets/55997625/1fc16492-2723-467d-a141-f11ed518cf90)
+The implementations provided in this repository were synthesized and implemented in Vivado v2018.2, using the TUL PYNQ Z2 board as the target device. The throughput and hardware efficiency (FoM) results are given in Figure 1 below. A detailed breakdown of the area consumption of each implementation is given in Table 1.
+
+<img src="https://github.com/RyanDeKoninck/256-bit_crypto_5G/assets/55997625/1fc16492-2723-467d-a141-f11ed518cf90" alt="area" width="600" />
+
+<img src="https://github.com/RyanDeKoninck/256-bit_crypto_5G/assets/55997625/771d6c72-2be5-4d2f-95f6-3573522a4aed" alt="area" width="300" />
 
 [//]: # (## Badges)
 [//]: # (On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.)
