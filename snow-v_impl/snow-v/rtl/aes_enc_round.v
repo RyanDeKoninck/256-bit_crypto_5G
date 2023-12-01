@@ -27,8 +27,11 @@ module aes_enc_round(
                      input wire            start,
                      input wire [127 : 0]  round_key,
 
-                     output wire [31 : 0]  sboxw_i,
-                     input wire  [31 : 0]  sboxw_o,
+                     output wire [31 : 0]  sboxw1_i,
+                     input wire  [31 : 0]  sboxw1_o,
+                     
+                     output wire [31 : 0]  sboxw2_i,
+                     input wire  [31 : 0]  sboxw2_o,
 
                      input wire [127 : 0]  block_i,
                      output wire [127 : 0] block_o,
@@ -154,13 +157,15 @@ module aes_enc_round(
   //----------------------------------------------------------------
   // Wires.
   //----------------------------------------------------------------
-  reg [31 : 0] muxed_sboxw;
+  reg [31 : 0] muxed_sboxw1;
+  reg [31 : 0] muxed_sboxw2;
   reg [2 : 0]  update_type;
 
   //----------------------------------------------------------------
   // Concurrent connectivity for ports etc.
   //----------------------------------------------------------------
-  assign sboxw_i = muxed_sboxw;
+  assign sboxw1_i = muxed_sboxw1;
+  assign sboxw2_i = muxed_sboxw2;
   assign block_o = {block_w0_reg, block_w1_reg, block_w2_reg, block_w3_reg};
   assign ready   = ready_reg;
 
@@ -221,7 +226,8 @@ module aes_enc_round(
       reg [127 : 0] addkey_init_block, addkey_main_block, addkey_final_block;
 
       block_new   = 128'h0;
-      muxed_sboxw = 32'h0;
+      muxed_sboxw1 = 32'h0;
+      muxed_sboxw2 = 32'h0;
       block_w0_we = 1'b0;
       block_w1_we = 1'b0;
       block_w2_we = 1'b0;
@@ -235,29 +241,21 @@ module aes_enc_round(
       case (update_type)
         SBOX_UPDATE:
           begin
-            block_new = {sboxw_o, sboxw_o, sboxw_o, sboxw_o};
+            block_new = {sboxw1_o, sboxw2_o, sboxw1_o, sboxw2_o};
             case (sword_ctr_reg)
               2'h0:
                 begin
-                  muxed_sboxw = block_i[127 : 096];
+                  muxed_sboxw1 = block_i[127 : 096];
+                  muxed_sboxw2 = block_i[095 : 064];
                   block_w0_we = 1'b1;
+                  block_w1_we = 1'b1;
                 end
 
               2'h1:
                 begin
-                  muxed_sboxw = block_i[095 : 064];
-                  block_w1_we = 1'b1;
-                end
-
-              2'h2:
-                begin
-                  muxed_sboxw = block_i[063 : 032];
+                  muxed_sboxw1 = block_i[063 : 032];
+                  muxed_sboxw2 = block_i[031 : 000];
                   block_w2_we = 1'b1;
-                end
-
-              2'h3:
-                begin
-                  muxed_sboxw = block_i[031 : 000];
                   block_w3_we = 1'b1;
                 end
             endcase // case (sbox_mux_ctrl_reg)
@@ -334,7 +332,7 @@ module aes_enc_round(
           begin
             sword_ctr_inc = 1'b1;
             update_type   = SBOX_UPDATE;
-            if (sword_ctr_reg == 2'h3)
+            if (sword_ctr_reg == 2'h1)
               begin
                 enc_round_ctrl_new  = CTRL_MAIN;
                 enc_round_ctrl_we   = 1'b1;

@@ -107,8 +107,10 @@ module snowv_core(
   // Connections with instantiations.
   reg            aes_round_start;
   wire [127 : 0] aes_round_key;
-  wire [31 : 0]  aes_round_sboxw_i;
-  wire [31 : 0]  aes_round_sboxw_o;
+  wire [31 : 0]  aes_round_sboxw1_i;
+  wire [31 : 0]  aes_round_sboxw1_o;
+  wire [31 : 0]  aes_round_sboxw2_i;
+  wire [31 : 0]  aes_round_sboxw2_o;
   reg  [127 : 0] aes_round_block_i;
   wire [127 : 0] aes_round_block_o;
   wire           aes_round_ready;
@@ -127,17 +129,25 @@ module snowv_core(
                               .start(aes_round_start),
                               .round_key(aes_round_key),
 
-                              .sboxw_i(aes_round_sboxw_i),
-                              .sboxw_o(aes_round_sboxw_o),
+                              .sboxw1_i(aes_round_sboxw1_i),
+                              .sboxw1_o(aes_round_sboxw1_o),
+                              
+                              .sboxw2_i(aes_round_sboxw2_i),
+                              .sboxw2_o(aes_round_sboxw2_o),
 
                               .block_i(aes_round_block_i),
                               .block_o(aes_round_block_o),
                               .ready(aes_round_ready)
                               );
     
-  aes_sbox sbox(
-                .sboxw(aes_round_sboxw_i),
-                .new_sboxw(aes_round_sboxw_o)
+  aes_sbox sbox1(
+                .sboxw(aes_round_sboxw1_i),
+                .new_sboxw(aes_round_sboxw1_o)
+                );
+  
+  aes_sbox sbox2(
+                .sboxw(aes_round_sboxw2_i),
+                .new_sboxw(aes_round_sboxw2_o)
                 );
                               
   //----------------------------------------------------------------
