@@ -1,10 +1,10 @@
 //======================================================================
 //
-// aes_decipher_block.v
+// aes_encipher_block.v
 // --------------------
-// The AES decipher round. A pure combinational module that implements
+// The AES encipher round. A pure combinational module that implements
 // the initial round, main round and final round logic for
-// decciper operations.
+// enciper operations.
 //
 //
 // Author: Joachim Strombergson
@@ -40,14 +40,16 @@
 
 `default_nettype none
 
-module aes_decipher_block(
+module aes_encipher_block_fly(
                           input wire            clk,
                           input wire            reset_n,
 
+                          input wire            init,
                           input wire            next,
 
                           input wire            keylen,
-                          output wire [3 : 0]   round,
+                          output wire           init_key,
+                          output wire           next_key,
                           input wire [127 : 0]  round_key,
 
                           input wire [127 : 0]  block,
@@ -71,14 +73,14 @@ module aes_decipher_block(
   localparam MAIN_UPDATE  = 3'h3;
   localparam FINAL_UPDATE = 3'h4;
 
-  localparam CTRL_IDLE  = 2'h0;
-  localparam CTRL_INIT  = 2'h1;
-  localparam CTRL_SBOX  = 2'h2;
-  localparam CTRL_MAIN  = 2'h3;
+  localparam CTRL_IDLE  = 3'h0;
+  localparam CTRL_INIT  = 3'h1;
+  localparam CTRL_SBOX  = 3'h2;
+  localparam CTRL_MAIN  = 3'h3;
 
 
   //----------------------------------------------------------------
-  // Gaolis multiplication functions for Inverse MixColumn.
+  // Round functions with sub functions.
   //----------------------------------------------------------------
   function [7 : 0] gm2(input [7 : 0] op);
     begin
@@ -92,43 +94,7 @@ module aes_decipher_block(
     end
   endfunction // gm3
 
-  function [7 : 0] gm4(input [7 : 0] op);
-    begin
-      gm4 = gm2(gm2(op));
-    end
-  endfunction // gm4
-
-  function [7 : 0] gm8(input [7 : 0] op);
-    begin
-      gm8 = gm2(gm4(op));
-    end
-  endfunction // gm8
-
-  function [7 : 0] gm09(input [7 : 0] op);
-    begin
-      gm09 = gm8(op) ^ op;
-    end
-  endfunction // gm09
-
-  function [7 : 0] gm11(input [7 : 0] op);
-    begin
-      gm11 = gm8(op) ^ gm2(op) ^ op;
-    end
-  endfunction // gm11
-
-  function [7 : 0] gm13(input [7 : 0] op);
-    begin
-      gm13 = gm8(op) ^ gm4(op) ^ op;
-    end
-  endfunction // gm13
-
-  function [7 : 0] gm14(input [7 : 0] op);
-    begin
-      gm14 = gm8(op) ^ gm4(op) ^ gm2(op);
-    end
-  endfunction // gm14
-
-  function [31 : 0] inv_mixw(input [31 : 0] w);
+  function [31 : 0] mixw(input [31 : 0] w);
     reg [7 : 0] b0, b1, b2, b3;
     reg [7 : 0] mb0, mb1, mb2, mb3;
     begin
@@ -137,16 +103,16 @@ module aes_decipher_block(
       b2 = w[15 : 08];
       b3 = w[07 : 00];
 
-      mb0 = gm14(b0) ^ gm11(b1) ^ gm13(b2) ^ gm09(b3);
-      mb1 = gm09(b0) ^ gm14(b1) ^ gm11(b2) ^ gm13(b3);
-      mb2 = gm13(b0) ^ gm09(b1) ^ gm14(b2) ^ gm11(b3);
-      mb3 = gm11(b0) ^ gm13(b1) ^ gm09(b2) ^ gm14(b3);
+      mb0 = gm2(b0) ^ gm3(b1) ^ b2      ^ b3;
+      mb1 = b0      ^ gm2(b1) ^ gm3(b2) ^ b3;
+      mb2 = b0      ^ b1      ^ gm2(b2) ^ gm3(b3);
+      mb3 = gm3(b0) ^ b1      ^ b2      ^ gm2(b3);
 
-      inv_mixw = {mb0, mb1, mb2, mb3};
+      mixw = {mb0, mb1, mb2, mb3};
     end
   endfunction // mixw
 
-  function [127 : 0] inv_mixcolumns(input [127 : 0] data);
+  function [127 : 0] mixcolumns(input [127 : 0] data);
     reg [31 : 0] w0, w1, w2, w3;
     reg [31 : 0] ws0, ws1, ws2, ws3;
     begin
@@ -155,16 +121,16 @@ module aes_decipher_block(
       w2 = data[063 : 032];
       w3 = data[031 : 000];
 
-      ws0 = inv_mixw(w0);
-      ws1 = inv_mixw(w1);
-      ws2 = inv_mixw(w2);
-      ws3 = inv_mixw(w3);
+      ws0 = mixw(w0);
+      ws1 = mixw(w1);
+      ws2 = mixw(w2);
+      ws3 = mixw(w3);
 
-      inv_mixcolumns = {ws0, ws1, ws2, ws3};
+      mixcolumns = {ws0, ws1, ws2, ws3};
     end
-  endfunction // inv_mixcolumns
+  endfunction // mixcolumns
 
-  function [127 : 0] inv_shiftrows(input [127 : 0] data);
+  function [127 : 0] shiftrows(input [127 : 0] data);
     reg [31 : 0] w0, w1, w2, w3;
     reg [31 : 0] ws0, ws1, ws2, ws3;
     begin
@@ -173,14 +139,14 @@ module aes_decipher_block(
       w2 = data[063 : 032];
       w3 = data[031 : 000];
 
-      ws0 = {w0[31 : 24], w3[23 : 16], w2[15 : 08], w1[07 : 00]};
-      ws1 = {w1[31 : 24], w0[23 : 16], w3[15 : 08], w2[07 : 00]};
-      ws2 = {w2[31 : 24], w1[23 : 16], w0[15 : 08], w3[07 : 00]};
-      ws3 = {w3[31 : 24], w2[23 : 16], w1[15 : 08], w0[07 : 00]};
+      ws0 = {w0[31 : 24], w1[23 : 16], w2[15 : 08], w3[07 : 00]};
+      ws1 = {w1[31 : 24], w2[23 : 16], w3[15 : 08], w0[07 : 00]};
+      ws2 = {w2[31 : 24], w3[23 : 16], w0[15 : 08], w1[07 : 00]};
+      ws3 = {w3[31 : 24], w0[23 : 16], w1[15 : 08], w2[07 : 00]};
 
-      inv_shiftrows = {ws0, ws1, ws2, ws3};
+      shiftrows = {ws0, ws1, ws2, ws3};
     end
-  endfunction // inv_shiftrows
+  endfunction // shiftrows
 
   function [127 : 0] addroundkey(input [127 : 0] data, input [127 : 0] rkey);
     begin
@@ -201,8 +167,8 @@ module aes_decipher_block(
   reg [3 : 0]   round_ctr_reg;
   reg [3 : 0]   round_ctr_new;
   reg           round_ctr_we;
-  reg           round_ctr_set;
-  reg           round_ctr_dec;
+  reg           round_ctr_rst;
+  reg           round_ctr_inc;
 
   reg [127 : 0] block_new;
   reg [31 : 0]  block_w0_reg;
@@ -218,29 +184,36 @@ module aes_decipher_block(
   reg           ready_new;
   reg           ready_we;
 
-  reg [1 : 0]   dec_ctrl_reg;
-  reg [1 : 0]   dec_ctrl_new;
-  reg           dec_ctrl_we;
+  reg [2 : 0]   enc_ctrl_reg;
+  reg [2 : 0]   enc_ctrl_new;
+  reg           enc_ctrl_we;
 
 
   //----------------------------------------------------------------
   // Wires.
   //----------------------------------------------------------------
-  reg [31 : 0]  tmp_sboxw;
+  reg [2 : 0] update_type;
+
+/* verilator lint_off UNOPTFLAT */
+  reg [31 : 0]  muxed_sboxw;
   wire [31 : 0] new_sboxw;
-  reg [2 : 0]   update_type;
+/* verilator lint_on UNOPTFLAT */
+
+  reg tmp_init_key;
+  reg tmp_next_key;
 
 
   //----------------------------------------------------------------
-  // Instantiations.
+  // Instatiations.
   //----------------------------------------------------------------
-  aes_inv_sbox inv_sbox_inst(.sboxw(tmp_sboxw), .new_sboxw(new_sboxw));
+  aes_sbox sbox_inst(.sboxw(muxed_sboxw), .new_sboxw(new_sboxw));
 
 
   //----------------------------------------------------------------
   // Concurrent connectivity for ports etc.
   //----------------------------------------------------------------
-  assign round     = round_ctr_reg;
+  assign init_key  = tmp_init_key;
+  assign next_key  = tmp_next_key;
   assign new_block = {block_w0_reg, block_w1_reg, block_w2_reg, block_w3_reg};
   assign ready     = ready_reg;
 
@@ -249,7 +222,7 @@ module aes_decipher_block(
   // reg_update
   //
   // Update functionality for all registers in the core.
-  // All registers are positive edge triggered with synchronous
+  // All registers are positive edge triggered with asynchronous
   // active low reset. All registers have write enable.
   //----------------------------------------------------------------
   always @ (posedge clk or negedge reset_n)
@@ -263,7 +236,7 @@ module aes_decipher_block(
           sword_ctr_reg <= 2'h0;
           round_ctr_reg <= 4'h0;
           ready_reg     <= 1'b1;
-          dec_ctrl_reg  <= CTRL_IDLE;
+          enc_ctrl_reg  <= CTRL_IDLE;
         end
       else
         begin
@@ -288,8 +261,8 @@ module aes_decipher_block(
           if (ready_we)
             ready_reg <= ready_new;
 
-          if (dec_ctrl_we)
-            dec_ctrl_reg <= dec_ctrl_new;
+          if (enc_ctrl_we)
+            enc_ctrl_reg <= enc_ctrl_new;
         end
     end // reg_update
 
@@ -301,34 +274,31 @@ module aes_decipher_block(
   //----------------------------------------------------------------
   always @*
     begin : round_logic
-      reg [127 : 0] old_block, inv_shiftrows_block, inv_mixcolumns_block;
-      reg [127 : 0] addkey_block;
+      reg [127 : 0] old_block, shiftrows_block, mixcolumns_block;
+      reg [127 : 0] addkey_init_block, addkey_main_block, addkey_final_block;
 
-      inv_shiftrows_block  = 128'h0;
-      inv_mixcolumns_block = 128'h0;
-      addkey_block         = 128'h0;
-      block_new            = 128'h0;
-      tmp_sboxw            = 32'h0;
-      block_w0_we          = 1'b0;
-      block_w1_we          = 1'b0;
-      block_w2_we          = 1'b0;
-      block_w3_we          = 1'b0;
+      block_new   = 128'h0;
+      muxed_sboxw = 32'h0;
+      block_w0_we = 1'b0;
+      block_w1_we = 1'b0;
+      block_w2_we = 1'b0;
+      block_w3_we = 1'b0;
 
-      old_block            = {block_w0_reg, block_w1_reg, block_w2_reg, block_w3_reg};
+      old_block          = {block_w0_reg, block_w1_reg, block_w2_reg, block_w3_reg};
+      shiftrows_block    = shiftrows(old_block);
+      mixcolumns_block   = mixcolumns(shiftrows_block);
+      addkey_init_block  = addroundkey(block, round_key);
+      addkey_main_block  = addroundkey(mixcolumns_block, round_key);
+      addkey_final_block = addroundkey(shiftrows_block, round_key);
 
-      // Update based on update type.
       case (update_type)
-        // InitRound
         INIT_UPDATE:
           begin
-            old_block           = block;
-            addkey_block        = addroundkey(old_block, round_key);
-            inv_shiftrows_block = inv_shiftrows(addkey_block);
-            block_new           = inv_shiftrows_block;
-            block_w0_we         = 1'b1;
-            block_w1_we         = 1'b1;
-            block_w2_we         = 1'b1;
-            block_w3_we         = 1'b1;
+            block_new    = addkey_init_block;
+            block_w0_we  = 1'b1;
+            block_w1_we  = 1'b1;
+            block_w2_we  = 1'b1;
+            block_w3_we  = 1'b1;
           end
 
         SBOX_UPDATE:
@@ -338,25 +308,25 @@ module aes_decipher_block(
             case (sword_ctr_reg)
               2'h0:
                 begin
-                  tmp_sboxw   = block_w0_reg;
+                  muxed_sboxw = block_w0_reg;
                   block_w0_we = 1'b1;
                 end
 
               2'h1:
                 begin
-                  tmp_sboxw   = block_w1_reg;
+                  muxed_sboxw = block_w1_reg;
                   block_w1_we = 1'b1;
                 end
 
               2'h2:
                 begin
-                  tmp_sboxw   = block_w2_reg;
+                  muxed_sboxw = block_w2_reg;
                   block_w2_we = 1'b1;
                 end
 
               2'h3:
                 begin
-                  tmp_sboxw   = block_w3_reg;
+                  muxed_sboxw = block_w3_reg;
                   block_w3_we = 1'b1;
                 end
             endcase // case (sbox_mux_ctrl_reg)
@@ -364,19 +334,16 @@ module aes_decipher_block(
 
         MAIN_UPDATE:
           begin
-            addkey_block         = addroundkey(old_block, round_key);
-            inv_mixcolumns_block = inv_mixcolumns(addkey_block);
-            inv_shiftrows_block  = inv_shiftrows(inv_mixcolumns_block);
-            block_new            = inv_shiftrows_block;
-            block_w0_we          = 1'b1;
-            block_w1_we          = 1'b1;
-            block_w2_we          = 1'b1;
-            block_w3_we          = 1'b1;
+            block_new    = addkey_main_block;
+            block_w0_we  = 1'b1;
+            block_w1_we  = 1'b1;
+            block_w2_we  = 1'b1;
+            block_w3_we  = 1'b1;
           end
 
         FINAL_UPDATE:
           begin
-            block_new    = addroundkey(old_block, round_key);
+            block_new    = addkey_final_block;
             block_w0_we  = 1'b1;
             block_w1_we  = 1'b1;
             block_w2_we  = 1'b1;
@@ -423,63 +390,78 @@ module aes_decipher_block(
       round_ctr_new = 4'h0;
       round_ctr_we  = 1'b0;
 
-      if (round_ctr_set)
+      if (round_ctr_rst)
         begin
-          if (keylen == AES_256_BIT_KEY)
-            begin
-              round_ctr_new = AES256_ROUNDS;
-            end
-          else
-            begin
-              round_ctr_new = AES128_ROUNDS;
-            end
+          round_ctr_new = 4'h0;
           round_ctr_we  = 1'b1;
         end
-      else if (round_ctr_dec)
+      else if (round_ctr_inc)
         begin
-          round_ctr_new = round_ctr_reg - 1'b1;
+          round_ctr_new = round_ctr_reg + 1'b1;
           round_ctr_we  = 1'b1;
         end
     end // round_ctr
 
 
   //----------------------------------------------------------------
-  // decipher_ctrl
+  // encipher_ctrl
   //
-  // The FSM that controls the decipher operations.
+  // The FSM that controls the encipher operations.
   //----------------------------------------------------------------
   always @*
-    begin: decipher_ctrl
+    begin: encipher_ctrl
+      reg [3 : 0] num_rounds;
+
+      // Default assignments.
       sword_ctr_inc = 1'b0;
       sword_ctr_rst = 1'b0;
-      round_ctr_dec = 1'b0;
-      round_ctr_set = 1'b0;
+      round_ctr_inc = 1'b0;
+      round_ctr_rst = 1'b0;
       ready_new     = 1'b0;
       ready_we      = 1'b0;
       update_type   = NO_UPDATE;
-      dec_ctrl_new  = CTRL_IDLE;
-      dec_ctrl_we   = 1'b0;
+      tmp_init_key  = 1'h0;
+      tmp_next_key  = 1'h0;
+      enc_ctrl_new  = CTRL_IDLE;
+      enc_ctrl_we   = 1'b0;
 
-      case(dec_ctrl_reg)
+      if (keylen == AES_256_BIT_KEY)
+        begin
+          num_rounds = AES256_ROUNDS;
+        end
+      else
+        begin
+          num_rounds = AES128_ROUNDS;
+        end
+
+      case(enc_ctrl_reg)
         CTRL_IDLE:
           begin
+            if (init) begin
+              tmp_init_key = 1'h1;
+            end
+
             if (next)
               begin
-                round_ctr_set = 1'b1;
+                tmp_next_key  = 1'h1;
+                round_ctr_rst = 1'b1;
                 ready_new     = 1'b0;
                 ready_we      = 1'b1;
-                dec_ctrl_new  = CTRL_INIT;
-                dec_ctrl_we   = 1'b1;
+                enc_ctrl_new  = CTRL_INIT;
+                enc_ctrl_we   = 1'b1;
               end
           end
 
         CTRL_INIT:
           begin
+            tmp_next_key  = 1'h1;
+            round_ctr_inc = 1'b1;
             sword_ctr_rst = 1'b1;
             update_type   = INIT_UPDATE;
-            dec_ctrl_new  = CTRL_SBOX;
-            dec_ctrl_we   = 1'b1;
+            enc_ctrl_new  = CTRL_SBOX;
+            enc_ctrl_we   = 1'b1;
           end
+
 
         CTRL_SBOX:
           begin
@@ -487,40 +469,40 @@ module aes_decipher_block(
             update_type   = SBOX_UPDATE;
             if (sword_ctr_reg == 2'h3)
               begin
-                round_ctr_dec = 1'b1;
-                dec_ctrl_new  = CTRL_MAIN;
-                dec_ctrl_we   = 1'b1;
+                tmp_next_key  = 1'h1;
+                enc_ctrl_new  = CTRL_MAIN;
+                enc_ctrl_we   = 1'b1;
               end
           end
+
 
         CTRL_MAIN:
           begin
             sword_ctr_rst = 1'b1;
-            if (round_ctr_reg > 0)
+            round_ctr_inc = 1'b1;
+            if (round_ctr_reg < num_rounds)
               begin
                 update_type   = MAIN_UPDATE;
-                dec_ctrl_new  = CTRL_SBOX;
-                dec_ctrl_we   = 1'b1;
+                enc_ctrl_new  = CTRL_SBOX;
+                enc_ctrl_we   = 1'b1;
               end
             else
               begin
                 update_type  = FINAL_UPDATE;
                 ready_new    = 1'b1;
                 ready_we     = 1'b1;
-                dec_ctrl_new = CTRL_IDLE;
-                dec_ctrl_we  = 1'b1;
+                enc_ctrl_new = CTRL_IDLE;
+                enc_ctrl_we  = 1'b1;
               end
           end
 
         default:
-          begin
-            // Empty. Just here to make the synthesis tool happy.
-          end
-      endcase // case (dec_ctrl_reg)
-    end // decipher_ctrl
+          begin end
+      endcase // case (enc_ctrl_reg)
+    end // encipher_ctrl
 
-endmodule // aes_decipher_block
+endmodule // aes_encipher_block
 
 //======================================================================
-// EOF aes_decipher_block.v
+// EOF aes_encipher_block.v
 //======================================================================
